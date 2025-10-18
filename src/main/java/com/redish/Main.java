@@ -15,10 +15,13 @@ public class Main {
       serverSocket.setReuseAddress(true);
       clientSocket = serverSocket.accept();
 
-      OutputStream os = clientSocket.getOutputStream();
-
-      String pongResponse = "+PONG\r\n";
-      os.write(pongResponse.getBytes());
+      while (true) {
+        byte[] input = new byte[1024];
+        clientSocket.getInputStream().read(input);
+        String output = "+PONG\r\n";
+        clientSocket.getOutputStream().write(output.getBytes());
+        clientSocket.getOutputStream().flush();
+      }
     } catch (IOException e) {
       System.out.println("IOException: " + e.getMessage());
     } finally {
