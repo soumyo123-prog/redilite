@@ -2,123 +2,115 @@ package com.redish.server;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
-public class RedisServer {
-  private int port = 6379;
-  private Selector selector;
+public class RedisServer implements AutoCloseable {
+  private final String host;
+  private final int port;
+  private final Selector selector;
+  private final ServerSocketChannel serverSocketChannel;
+  private volatile boolean isRunning;
+  private final ConnectionHandler connectionHandler;
 
-  public RedisServer() {
-    /**
-     * Following is the event-loop based implementation of non-blocking TCP server
-     * in JAVA.
-     */
+  public RedisServer(String host, int port) throws IOException {
+    this.host = host;
+    this.port = port;
 
-    try {
-      // Selector monitors multiple channels at once.
-      this.selector = Selector.open();
+    // Selector monitors multiple channels at once.
+    this.selector = Selector.open();
 
-      // Channels are like pipes of data which replace traditional data streams.
-      // They can be configured as non-blocking, hence, they are essential here.
-      // ServerSocketChannel: This is our listener pipe, whose only job is to listen
-      // for new connections.
-      ServerSocketChannel serverSocketChannel = ServerSocketChannel.open();
-      serverSocketChannel.bind(new InetSocketAddress("localhost", port));
-      serverSocketChannel.configureBlocking(false);
+    // Channels are like pipes of data which replace traditional data streams.
+    // They can be configured as non-blocking, hence, they are essential here.
+    // ServerSocketChannel: This is our listener pipe, whose only job is to listen
+    // for new connections.
+    this.serverSocketChannel = ServerSocketChannel.open();
+    this.connectionHandler = new ConnectionHandler();
+  }
 
-      // Telling the selector to watch the serverSocketChannel and notify about new
-      // connections.
-      serverSocketChannel.register(this.selector, SelectionKey.OP_ACCEPT);
+  public void start() throws IOException {
+    this.serverSocketChannel.bind(new InetSocketAddress(this.host, this.port));
+    this.serverSocketChannel.configureBlocking(false);
 
-      // The "event-loop".
-      while (true) {
-        // Only blocking call in the server. Waits until atleast one of the registered
-        // channels are ready for an event. In our case, it waits until the registered
-        // serverSocketChannel is ready for accepting new connections.
-        this.selector.select();
+    // Telling the selector to watch the serverSocketChannel and notify about new
+    // connections.
+    this.serverSocketChannel.register(this.selector, SelectionKey.OP_ACCEPT);
 
-        // Event is ready, we take the keys (tickets) for all the ready channels. In
-        // this case only one registered channel is ready till now. A 'SelectionKey'
-        // tells us two things: a) Which channel is ready and b) What is is ready for?
-        Set<SelectionKey> selectionKeys = this.selector.selectedKeys();
-        Iterator<SelectionKey> iterator = selectionKeys.iterator();
+    this.isRunning = true;
 
-        while (iterator.hasNext()) {
-          SelectionKey key = iterator.next();
+    runEventLoop();
+  }
 
+  private void runEventLoop() throws IOException {
+    while (isRunning) {
+      // Only blocking call in the server. Waits until atleast one of the registered
+      // channels are ready for an event. In our case, it waits until the registered
+      // serverSocketChannel is ready for accepting new connections.
+      this.selector.select();
+
+      // Event is ready, we take the keys (tickets) for all the ready channels. In
+      // this case only one registered channel is ready till now. A 'SelectionKey'
+      // tells us two things: a) Which channel is ready and b) What is is ready for?
+      Set<SelectionKey> selectionKeys = this.selector.selectedKeys();
+      Iterator<SelectionKey> iterator = selectionKeys.iterator();
+
+      while (iterator.hasNext()) {
+        SelectionKey key = iterator.next();
+        // Removal of a processed key is essential to avoid repeated processing of same
+        // event.
+        iterator.remove();
+
+        if (!key.isValid())
+          continue;
+
+        try {
           if (key.isAcceptable()) {
-            this.handleAccept(key);
+            this.connectionHandler.handleAccept(this.selector, key);
           } else if (key.isReadable()) {
-            this.handleRead(key);
+            this.connectionHandler.handleRead(key);
+          } else if (key.isWritable()) {
+            this.connectionHandler.handleWrite(key);
           }
-
-          // Removal of a processed key is essential to avoid repeated processing of same
-          // event.
-          iterator.remove();
+        } catch (IOException e) {
+          this.connectionHandler.closeConnection(key);
         }
       }
+
+    }
+  }
+
+  @Override
+  public void close() {
+    this.isRunning = false;
+    try {
+      if (this.selector != null && this.selector.isOpen()) {
+        selector.close();
+      }
+      if (this.serverSocketChannel != null && this.serverSocketChannel.isOpen()) {
+        this.serverSocketChannel.close();
+      }
     } catch (IOException e) {
-      e.printStackTrace();
+      System.err.println("Error while closing server: " + e.getMessage());
     }
-
-    /**
-     * Following is the thread implementation of the redis server, which is good for
-     * less number of concurrent users as it is based on one thread per connection.
-     * Consumes more resources and does not scale-up so well.
-     * 
-     * try (ServerSocket serverSocket = new ServerSocket(port)) {
-     * while (true) {
-     * Socket clientSocket = serverSocket.accept();
-     * RedisThread redisThread = new RedisThread(clientSocket);
-     * Thread thread = new Thread(redisThread);
-     * thread.start();
-     * }
-     * } catch (IOException e) {
-     * System.out.println("IOException: " + e.getMessage());
-     * }
-     */
   }
 
-  private void handleAccept(SelectionKey key) throws IOException {
-    // Since, at this stage, only the serverSocketChannel was registered for accept
-    // events.
-    ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
-
-    // Accepting the new client connection and do configurations.
-    SocketChannel client = serverSocketChannel.accept();
-    client.configureBlocking(false);
-
-    // Register the new client connection for read events.
-    client.register(this.selector, SelectionKey.OP_READ);
-  }
-
-  private void handleRead(SelectionKey key) throws IOException {
-    // Since this would be a client connection as it is ready to read.
-    SocketChannel clientSocketChannel = (SocketChannel) key.channel();
-
-    // Allocate a buffer and read data from channel (pipe) into the buffer (bucket).
-    ByteBuffer buffer = ByteBuffer.allocate(1024);
-    int bytesRead = clientSocketChannel.read(buffer);
-
-    if (bytesRead == -1) {
-      // Connection was closed by client.
-      clientSocketChannel.close();
-      key.cancel();
-      return;
-    }
-
-    buffer.clear();
-    buffer.put("+PONG\r\n".getBytes());
-
-    // Switch the buffer to write-mode (this is essential when we actually want to
-    // process the client message).
-    buffer.flip();
-    clientSocketChannel.write(buffer);
-  }
+  /**
+   * Following is the thread implementation of the redis server, which is good for
+   * less number of concurrent users as it is based on one thread per connection.
+   * Consumes more resources and does not scale-up so well.
+   * 
+   * try (ServerSocket serverSocket = new ServerSocket(port)) {
+   * while (true) {
+   * Socket clientSocket = serverSocket.accept();
+   * RedisThread redisThread = new RedisThread(clientSocket);
+   * Thread thread = new Thread(redisThread);
+   * thread.start();
+   * }
+   * } catch (IOException e) {
+   * System.out.println("IOException: " + e.getMessage());
+   * }
+   */
 }
