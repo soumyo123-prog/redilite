@@ -8,6 +8,11 @@ import java.nio.channels.ServerSocketChannel;
 import java.util.Iterator;
 import java.util.Set;
 
+import com.redish.server.command.CommandRegistry;
+import com.redish.server.command.implementation.EchoHandler;
+import com.redish.server.command.implementation.PingHandler;
+import com.redish.server.command.implementation.SimpleCommandProcessor;
+
 public class RedisServer implements AutoCloseable {
   private final String host;
   private final int port;
@@ -28,7 +33,12 @@ public class RedisServer implements AutoCloseable {
     // ServerSocketChannel: This is our listener pipe, whose only job is to listen
     // for new connections.
     this.serverSocketChannel = ServerSocketChannel.open();
-    this.connectionHandler = new ConnectionHandler();
+
+    CommandRegistry registry = new CommandRegistry();
+    registry.register(new EchoHandler());
+
+    // Ping handler is currently a fallback for all the unsupported commands.
+    this.connectionHandler = new ConnectionHandler(new SimpleCommandProcessor(registry, new PingHandler()));
   }
 
   public void start() throws IOException {

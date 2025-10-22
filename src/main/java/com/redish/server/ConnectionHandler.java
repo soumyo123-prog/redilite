@@ -1,13 +1,27 @@
 package com.redish.server;
 
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
+import com.redish.server.command.CommandProcessor;
+import com.redish.server.resp.RespParser;
 
 public class ConnectionHandler {
+  private final CommandProcessor commandProcessor;
+
+  public ConnectionHandler(CommandProcessor commandProcessor) {
+    this.commandProcessor = commandProcessor;
+  }
+
   public void handleAccept(Selector selector, SelectionKey key) throws IOException {
     ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
 
@@ -36,7 +50,27 @@ public class ConnectionHandler {
       return;
     }
 
-    clientConnection.prepareResponse("+PONG\r\n");
+    // Flip buffer to read mode.
+    buffer.flip();
+
+    // 1. Get the length of the data to be read.
+    // 2. Bulk insert the data from buffer into data array.
+    // 3. Read the message.
+    byte[] data = new byte[buffer.remaining()];
+    buffer.get(data);
+
+    ByteArrayInputStream bais = new ByteArrayInputStream(data);
+    InputStreamReader inputStreamReader = new InputStreamReader(bais, StandardCharsets.UTF_8);
+    BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
+
+    List<String> parsedCommand = RespParser.parseCommand(bufferedReader);
+
+    String response = commandProcessor.process(parsedCommand, clientConnection);
+
+    // Clear buffer for next read.
+    buffer.clear();
+
+    clientConnection.prepareResponse(response);
 
     // Set the interest of the current key to OP_WRITE (in order to write the PONG
     // response).
