@@ -23,6 +23,7 @@ public class RedisServer implements AutoCloseable {
   private final ServerSocketChannel serverSocketChannel;
   private volatile boolean isRunning;
   private final ConnectionHandler connectionHandler;
+  private final KeyValueStore keyValueStore;
 
   public RedisServer(String host, int port) throws IOException {
     this.host = host;
@@ -39,6 +40,7 @@ public class RedisServer implements AutoCloseable {
 
     // The core key-value store for our redis server.
     KeyValueStore keyValueStore = new KeyValueStore();
+    this.keyValueStore = keyValueStore;
 
     CommandRegistry registry = new CommandRegistry();
     registry.register(new EchoHandler());
@@ -67,36 +69,39 @@ public class RedisServer implements AutoCloseable {
       // Only blocking call in the server. Waits until atleast one of the registered
       // channels are ready for an event. In our case, it waits until the registered
       // serverSocketChannel is ready for accepting new connections.
-      this.selector.select();
+      int readyChannels = this.selector.select(100);
 
-      // Event is ready, we take the keys (tickets) for all the ready channels. In
-      // this case only one registered channel is ready till now. A 'SelectionKey'
-      // tells us two things: a) Which channel is ready and b) What is is ready for?
-      Set<SelectionKey> selectionKeys = this.selector.selectedKeys();
-      Iterator<SelectionKey> iterator = selectionKeys.iterator();
+      if (readyChannels > 0) {
+        // Event is ready, we take the keys (tickets) for all the ready channels. In
+        // this case only one registered channel is ready till now. A 'SelectionKey'
+        // tells us two things: a) Which channel is ready and b) What is is ready for?
+        Set<SelectionKey> selectionKeys = this.selector.selectedKeys();
+        Iterator<SelectionKey> iterator = selectionKeys.iterator();
 
-      while (iterator.hasNext()) {
-        SelectionKey key = iterator.next();
-        // Removal of a processed key is essential to avoid repeated processing of same
-        // event.
-        iterator.remove();
+        while (iterator.hasNext()) {
+          SelectionKey key = iterator.next();
+          // Removal of a processed key is essential to avoid repeated processing of same
+          // event.
+          iterator.remove();
 
-        if (!key.isValid())
-          continue;
+          if (!key.isValid())
+            continue;
 
-        try {
-          if (key.isAcceptable()) {
-            this.connectionHandler.handleAccept(this.selector, key);
-          } else if (key.isReadable()) {
-            this.connectionHandler.handleRead(key);
-          } else if (key.isWritable()) {
-            this.connectionHandler.handleWrite(key);
+          try {
+            if (key.isAcceptable()) {
+              this.connectionHandler.handleAccept(this.selector, key);
+            } else if (key.isReadable()) {
+              this.connectionHandler.handleRead(key);
+            } else if (key.isWritable()) {
+              this.connectionHandler.handleWrite(key);
+            }
+          } catch (IOException e) {
+            this.connectionHandler.closeConnection(key);
           }
-        } catch (IOException e) {
-          this.connectionHandler.closeConnection(key);
         }
       }
 
+      this.keyValueStore.runActiveExpiration();
     }
   }
 
