@@ -1,11 +1,9 @@
-package com.redish.server.command.implementation;
+package com.redish.server.command;
 
 import java.util.List;
 
 import com.redish.server.ClientConnection;
-import com.redish.server.command.CommandHandler;
-import com.redish.server.command.CommandProcessor;
-import com.redish.server.command.CommandRegistry;
+import com.redish.server.command.handler.CommandHandler;
 
 public class SimpleCommandProcessor implements CommandProcessor {
   private final CommandRegistry registry;

@@ -1,9 +1,9 @@
-package com.redish.server.command.implementation;
+package com.redish.server.command.handler.impl;
 
 import java.util.List;
 
 import com.redish.server.ClientConnection;
-import com.redish.server.command.CommandHandler;
+import com.redish.server.command.handler.CommandHandler;
 import com.redish.server.resp.RespParser;
 
 public class EchoHandler implements CommandHandler {

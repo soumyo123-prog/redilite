@@ -2,6 +2,9 @@ package com.redish.server.command;
 
 import java.util.HashMap;
 import java.util.Map;
+
+import com.redish.server.command.handler.CommandHandler;
+
 import java.util.Locale;
 
 public class CommandRegistry {

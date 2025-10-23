@@ -25,6 +25,14 @@ public class RespParser {
     return sb.toString();
   }
 
+  public static String convertToSimpleString(String data) {
+    return String.format("+%s\r\n", data);
+  }
+
+  public static String convertToErrorString(String message) {
+    return String.format("-ERR %s\r\n", message);
+  }
+
   public static List<String> parseCommand(BufferedReader br) throws IOException {
     String header = br.readLine();
 
