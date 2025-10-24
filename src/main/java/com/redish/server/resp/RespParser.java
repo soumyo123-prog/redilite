@@ -33,6 +33,10 @@ public class RespParser {
     return String.format("-ERR %s\r\n", message);
   }
 
+  public static String convertToInteger(int num) {
+    return String.format(":%d\r\n", num);
+  }
+
   public static List<String> parseCommand(BufferedReader br) throws IOException {
     String header = br.readLine();
 

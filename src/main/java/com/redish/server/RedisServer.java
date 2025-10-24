@@ -13,8 +13,10 @@ import com.redish.server.command.SimpleCommandProcessor;
 import com.redish.server.command.handler.impl.EchoHandler;
 import com.redish.server.command.handler.impl.GetHandler;
 import com.redish.server.command.handler.impl.PingHandler;
+import com.redish.server.command.handler.impl.RpushHandler;
 import com.redish.server.command.handler.impl.SetHandler;
 import com.redish.server.store.KeyValueStore;
+import com.redish.server.store.ListStore;
 
 public class RedisServer implements AutoCloseable {
   private final String host;
@@ -24,6 +26,7 @@ public class RedisServer implements AutoCloseable {
   private volatile boolean isRunning;
   private final ConnectionHandler connectionHandler;
   private final KeyValueStore keyValueStore;
+  private final ListStore listStore;
 
   public RedisServer(String host, int port) throws IOException {
     this.host = host;
@@ -42,10 +45,14 @@ public class RedisServer implements AutoCloseable {
     KeyValueStore keyValueStore = new KeyValueStore();
     this.keyValueStore = keyValueStore;
 
+    ListStore listStore = new ListStore();
+    this.listStore = listStore;
+
     CommandRegistry registry = new CommandRegistry();
     registry.register(new EchoHandler());
     registry.register(new GetHandler(keyValueStore));
     registry.register(new SetHandler(keyValueStore));
+    registry.register(new RpushHandler(listStore));
 
     // Ping handler is currently a fallback for all the unsupported commands.
     this.connectionHandler = new ConnectionHandler(new SimpleCommandProcessor(registry, new PingHandler()));
