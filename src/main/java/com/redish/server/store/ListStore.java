@@ -2,6 +2,7 @@ package com.redish.server.store;
 
 import java.util.HashMap;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 
 public class ListStore {
@@ -19,5 +20,20 @@ public class ListStore {
 
     store.put(listKey, list);
     return list.size();
+  }
+
+  public List<String> lrange(String listKey, int startIdx, int endIdx) {
+    LinkedList<String> list = store.get(listKey);
+    if (list == null) {
+      return List.of();
+    }
+
+    endIdx = Math.min(endIdx, list.size() - 1);
+
+    if (startIdx >= list.size() || startIdx > endIdx) {
+      return List.of();
+    }
+
+    return new LinkedList<>(list.subList(startIdx, endIdx + 1));
   }
 }

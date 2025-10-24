@@ -37,6 +37,17 @@ public class RespParser {
     return String.format(":%d\r\n", num);
   }
 
+  public static String convertToArray(List<String> list) {
+    StringBuilder sb = new StringBuilder();
+
+    sb.append("*");
+    sb.append(list.size());
+    sb.append("\r\n");
+    list.forEach(member -> sb.append(convertToSimpleString(member)));
+
+    return sb.toString();
+  }
+
   public static List<String> parseCommand(BufferedReader br) throws IOException {
     String header = br.readLine();
 
