@@ -7,15 +7,17 @@ import java.util.Map;
 public class ListStore {
   Map<String, LinkedList<String>> store = new HashMap<>();
 
-  public int rpush(String listKey, String value) {
+  public int rpush(String listKey, String... values) {
     LinkedList<String> list = store.get(listKey);
     if (null == list) {
       list = new LinkedList<>();
     }
 
-    list.addLast(value);
-    store.put(listKey, list);
+    for (String value : values) {
+      list.addLast(value);
+    }
 
+    store.put(listKey, list);
     return list.size();
   }
 }

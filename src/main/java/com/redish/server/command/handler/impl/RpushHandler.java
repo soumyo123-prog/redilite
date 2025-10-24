@@ -16,14 +16,10 @@ public class RpushHandler implements CommandHandler {
 
   @Override
   public String handle(List<String> args, ClientConnection connection) {
-    if (args.size() != 2) {
-      return RespParser.convertToErrorString("Wrong number of arguments for 'rpush' command. Expected: 2");
-    }
-
     String listKey = args.get(0);
-    String value = args.get(1);
+    List<String> values = args.subList(1, args.size());
 
-    int size = this.listStore.rpush(listKey, value);
+    int size = this.listStore.rpush(listKey, values.toArray(new String[0]));
     return RespParser.convertToInteger(size);
   }
 
